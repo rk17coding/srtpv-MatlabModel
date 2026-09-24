@@ -47,6 +47,4 @@ For example, in your .yml file, use:
 ## License
 The license is available in the License file within this repository.
 
-Rahul awsm
-
 Copyright (c) 2022-2023, The MathWorks, Inc.
