@@ -1,73 +1,122 @@
 function diffGitHub_pullrequest(branchname)
-    % Open project
     proj = openProject(pwd);
 
-    % List modified models since branch diverged from main
-    % Use *** to search recursively for modified SLX files starting in the current folder
-    % git diff --name-only main..branchtomerge
     gitCommand = sprintf('git --no-pager diff --name-only origin/main..origin/%s ***.slx', branchname);
-    [status,modifiedFiles] = system(gitCommand);
+    [status, modifiedFiles] = system(gitCommand);
     if status ~= 0
         warning("git diff failed")
         warning(modifiedFiles)
         return;
     end
     modifiedFiles = split(modifiedFiles);
-    modifiedFiles(end) = []; % Removing last element because it is empty
-    
+    modifiedFiles(end) = [];
+
     if isempty(modifiedFiles)
         disp('No modified models to compare.')
         return
     end
-    
-    % Create a temporary folder to store the ancestors of the modified models
-    % If you have models with the same name in different folders, consider
-    % creating multiple folders to prevent overwriting temporary models
+
     tempdir = fullfile(proj.RootFolder, "modelscopy");
     mkdir(tempdir)
-    
-    % Generate a comparison report for every modified model file
+
     for i = 1:numel(modifiedFiles)
-        diffToAncestor(tempdir,string(modifiedFiles(i)));
+        diffToAncestor(tempdir, string(modifiedFiles(i)));
     end
-    
-    % FIXED: Uses the full variable path and correct syntax for recursive deletion
-    % This works flawlessly on both Windows and Linux cloud runners.
+
     rmdir(tempdir, 's');
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function report = diffToAncestor(tempdir,fileName)
-    ancestor = getAncestor(tempdir,fileName);
+function report = diffToAncestor(tempdir, fileName)
+    ancestor = getAncestor(tempdir, fileName);
     if isempty(ancestor)
-        % new model - skip diff report
         report = [];
         return
     end
 
-    % Compare models and publish results in a printable report
-    % Specify the format using 'pdf', 'html', or 'docx'
-    comp = visdiff(ancestor, fileName);
-    filter(comp, 'unfiltered');
-    report = publish(comp,'html');
+    [~, name, ~] = fileparts(fileName);
+
+    % ------------------------------------------------------------------
+    % HEADLESS: Use slxmlcomp.compare instead of visdiff
+    % No GUI / display / Comparison Tool needed
+    % ------------------------------------------------------------------
+    try
+        % Compare the two SLX files at the XML level
+        diffResult = slxmlcomp.compare(ancestor, fileName);
+
+        % Write results to an HTML report in the workspace root
+        % (workflow uploads *.html from workspace root)
+        reportFile = fullfile(fileparts(fileparts(tempdir)), ...
+                              sprintf('%s_diff_report.html', name));
+
+        fid = fopen(reportFile, 'w');
+        fprintf(fid, '<!DOCTYPE html>\n<html>\n<head>\n');
+        fprintf(fid, '<title>Diff Report: %s</title>\n', name);
+        fprintf(fid, '<style>\n');
+        fprintf(fid, '  body { font-family: Arial, sans-serif; margin: 20px; }\n');
+        fprintf(fid, '  h1 { color: #333; }\n');
+        fprintf(fid, '  table { border-collapse: collapse; width: 100%%; }\n');
+        fprintf(fid, '  th { background-color: #4CAF50; color: white; padding: 8px; text-align: left; }\n');
+        fprintf(fid, '  td { border: 1px solid #ddd; padding: 8px; }\n');
+        fprintf(fid, '  tr:nth-child(even) { background-color: #f2f2f2; }\n');
+        fprintf(fid, '  .added    { color: green; font-weight: bold; }\n');
+        fprintf(fid, '  .removed  { color: red;   font-weight: bold; }\n');
+        fprintf(fid, '  .modified { color: orange; font-weight: bold; }\n');
+        fprintf(fid, '</style>\n</head>\n<body>\n');
+        fprintf(fid, '<h1>Model Diff Report: %s</h1>\n', name);
+        fprintf(fid, '<p><b>Ancestor (main):</b> %s</p>\n', ancestor);
+        fprintf(fid, '<p><b>Modified:</b> %s</p>\n', fileName);
+        fprintf(fid, '<p><b>Total differences:</b> %d</p>\n', diffResult.Count);
+
+        if diffResult.Count == 0
+            fprintf(fid, '<p style="color:green;">No differences found.</p>\n');
+        else
+            fprintf(fid, '<table>\n');
+            fprintf(fid, '<tr><th>#</th><th>Type</th><th>Path</th></tr>\n');
+            for k = 1:diffResult.Count
+                item = diffResult.Item(k);
+                dtype = item.DifferenceType;
+
+                % Pick CSS class based on difference type
+                if strcmpi(dtype, 'added')
+                    css = 'added';
+                elseif strcmpi(dtype, 'removed')
+                    css = 'removed';
+                else
+                    css = 'modified';
+                end
+
+                fprintf(fid, '<tr><td>%d</td><td class="%s">%s</td><td>%s</td></tr>\n', ...
+                        k, css, dtype, item.Path);
+            end
+            fprintf(fid, '</table>\n');
+        end
+
+        fprintf(fid, '</body>\n</html>\n');
+        fclose(fid);
+
+        fprintf('Report written: %s\n', reportFile);
+        report = reportFile;
+
+    catch ME
+        warning('Comparison failed for %s: %s', fileName, ME.message);
+        report = [];
+    end
 end
 
-function ancestor = getAncestor(tempdir,fileName)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function ancestor = getAncestor(tempdir, fileName)
     [~, name, ext] = fileparts(fileName);
     ancestor = fullfile(tempdir, name);
-    
-    % Replace separators to work with Git and create ancestor file name
+
     fileName = strrep(fileName, '\', '/');
-    ancestor = strrep(sprintf('%s%s%s',ancestor, "_ancestor", ext), '\', '/');
-    
-    % Build git command to get ancestor from main
-    % git show origin/main:models/modelname.slx > modelscopy/modelname_ancestor.slx
+    ancestor = strrep(sprintf('%s%s%s', ancestor, "_ancestor", ext), '\', '/');
+
     gitCommand = sprintf('git --no-pager show origin/main:%s > %s', fileName, ancestor);
-    
     [status, ~] = system(gitCommand);
     if status ~= 0
-        % new model
         ancestor = [];
     end
 end
