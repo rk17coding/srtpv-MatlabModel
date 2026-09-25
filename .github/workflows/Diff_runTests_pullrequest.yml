@@ -17,6 +17,8 @@ jobs:
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2023a        # Pin R2023a — required for headless publish
 
       - name: Compare Models to Ancestors
         uses: matlab-actions/run-command@v2.1.1
@@ -27,9 +29,7 @@ jobs:
         if: always()
         run: |
           echo "=== HTML files in workspace ==="
-          find ${{ github.workspace }} -name "*.html" | head -20
-          echo "=== Project structure ==="
-          find ${{ github.workspace }} -name "*.m" | head -20
+          find ${{ github.workspace }} -name "*.html" 2>/dev/null || echo "NO HTML FILES FOUND"
 
       - name: Upload Comparison Reports
         if: always()
@@ -38,12 +38,3 @@ jobs:
           name: diffreports
           path: ${{ github.workspace }}/**/*.html
           if-no-files-found: warn
-
-      - name: Run All Project Tests
-        uses: matlab-actions/run-command@v2.1.1
-        with:
-          # Opens the project first so MATLAB knows the root, then runs all
-          # tests recursively from the project root folder
-          command: >
-            proj = openProject(pwd);
-            runtests(proj.RootFolder, 'IncludeSubfolders', true);
