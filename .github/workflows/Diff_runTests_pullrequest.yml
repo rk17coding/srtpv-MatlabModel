@@ -28,6 +28,8 @@ jobs:
         run: |
           echo "=== HTML files in workspace ==="
           find ${{ github.workspace }} -name "*.html" | head -20
+          echo "=== Project structure ==="
+          find ${{ github.workspace }} -name "*.m" | head -20
 
       - name: Upload Comparison Reports
         if: always()
@@ -40,4 +42,8 @@ jobs:
       - name: Run All Project Tests
         uses: matlab-actions/run-command@v2.1.1
         with:
-          command: runtests
+          # Opens the project first so MATLAB knows the root, then runs all
+          # tests recursively from the project root folder
+          command: >
+            proj = openProject(pwd);
+            runtests(proj.RootFolder, 'IncludeSubfolders', true);
