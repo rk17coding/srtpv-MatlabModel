@@ -1,8 +1,6 @@
 name: PullRequest - Diff to Ancestor, Publish and attach Report, and Run Project Tests
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on pull request events but only for the main branch
   pull_request:
     branches: [ main ]
 
@@ -10,7 +8,7 @@ jobs:
   my-job:
     name: Diff to Ancestor, Publish and attach Report, and Run Project Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -19,12 +17,6 @@ jobs:
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v3
-
-      - name: Install and start virtual display (Xvfb)
-        run: |
-          sudo apt-get install -y xvfb
-          Xvfb :99 -screen 0 1280x1024x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
 
       - name: Compare Models to Ancestors
         uses: matlab-actions/run-command@v2
